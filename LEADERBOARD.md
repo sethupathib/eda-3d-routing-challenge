@@ -10,8 +10,9 @@ do not edit it by hand.
 
 | rank | submission | author | aggregate | legal | total delay | runtime (s) | Pareto |
 |---:|---|---|---:|:---:|---:|---:|:---:|
-| 1 | delay-opt | Sethupathi | 1.1950 | 9/9 | 169269 | 919.18 | ✓ |
-| 2 | negotiated_x2 | Anthropic (reference) | 1.0168 | 9/9 | 198763 | 177.01 | ✓ |
-| 3 | negotiated | Anthropic (reference) | 1.0000 | 9/9 | 201863 | 85.20 | ✓ |
-| 4 | negotiated_fast | Anthropic (reference) | — | 8/9 | — | 61.74 |  |
+| 1 | cpp-route | sethupathib | 1.2354 | 9/9 | 163273 | 371.22 | ✓ |
+| 2 | delay-opt | Sethupathi | 1.1950 | 9/9 | 169269 | 919.18 |  |
+| 3 | negotiated_x2 | Anthropic (reference) | 1.0168 | 9/9 | 198763 | 177.01 | ✓ |
+| 4 | negotiated | Anthropic (reference) | 1.0000 | 9/9 | 201863 | 85.20 | ✓ |
+| 5 | negotiated_fast | Anthropic (reference) | — | 8/9 | — | 61.74 |  |
 

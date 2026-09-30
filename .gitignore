@@ -15,4 +15,5 @@ __pycache__/
 .pytest_cache/
 build/
 dist/
+cpp/m3d_route
 *.egg-info/

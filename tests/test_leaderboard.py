@@ -39,9 +39,10 @@ class TestSeedSubmissions(unittest.TestCase):
         # complete submissions rank ahead of the incomplete one
         ranked = rank_submissions(list(subs.values()))
         self.assertEqual(ranked[-1].name, "negotiated_fast")
-        # both complete entries are on the runtime-vs-delay frontier
+        # Fast reference routers stay on the frontier because they spend less
+        # time. cpp-route is the low-delay end of that frontier.
         self.assertEqual(set(pareto_frontier(list(subs.values()))),
-                         {"negotiated", "negotiated_x2"})
+                         {"cpp-route", "negotiated", "negotiated_x2"})
 
 
 if __name__ == "__main__":
