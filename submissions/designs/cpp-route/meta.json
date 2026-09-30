@@ -1,0 +1,6 @@
+{
+  "author": "sethupathib",
+  "url": "https://github.com/sethupathib/eda-3d-routing-challenge",
+  "method": "C++ PathFinder on driver shortest-path trees, then residual polish, pair re-routing, and large-neighborhood search",
+  "date": "2026-09-30"
+}
