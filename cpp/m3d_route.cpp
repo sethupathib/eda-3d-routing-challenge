@@ -336,6 +336,7 @@ public:
     }
 
     int nnets() const { return (int)inst.nets.size(); }
+    int vertices() const { return NV; }
     int total() const {
         int s = 0;
         for (auto& r : routes)
@@ -565,7 +566,7 @@ public:
         return removed;
     }
 
-    int group_search(int rounds, int max_b) {
+    int group_search(int rounds, int max_b, int net_limit = -1) {
         const double penalties[] = {0, 1, 2, 4, 8, 16, 32, 64};
         int total_gain = 0;
         for (int rnd = 0; rnd < rounds; ++rnd) {
@@ -574,6 +575,7 @@ public:
             std::sort(order.begin(), order.end(), [&](int a, int b) {
                 return (routes[a].delay - inst.nets[a].lb) > (routes[b].delay - inst.nets[b].lb);
             });
+            if (net_limit > 0 && (int)order.size() > net_limit) order.resize(net_limit);
             int gain = 0;
             for (int si : order) {
                 if (!routes[si].ok) continue;
@@ -1162,8 +1164,12 @@ static SolveResult solve_file(const std::string& path, const std::string& out_di
         return duration<double>(deadline - Clock::now()).count();
     };
 
+    std::cerr << "load " << path << "\n" << std::flush;
     Instance inst = load_instance(path);
     Router router(std::move(inst));
+    std::cerr << "built " << router.instance().name << " lb=" << router.lb_sum()
+              << " verts=" << router.vertices() << "\n"
+              << std::flush;
     std::mt19937 rng(seed);
     auto ords = router.orders(rng);
 
@@ -1185,25 +1191,50 @@ static SolveResult solve_file(const std::string& path, const std::string& out_di
         std::string tag;
         Router::Snap snap;
     };
+    const int nv = router.vertices();
+    const bool huge = nv >= 400000;   // stress tier
+    const bool big = nv >= 70000;     // scale, congested, designs
+    const int pair_cap = huge ? 0 : big ? 50 : 400;
+    const int group_nets = huge ? 0 : big ? 36 : -1;
+
     std::vector<Start> starts;
-    auto try_start = [&](size_t oi, const Sched& sc) {
-        if (!router.pathfinder(ords[oi], sc.mode, sc.iters, sc.pres0, sc.mult, sc.hist, sc.cap))
+    auto try_start = [&](size_t oi, const Sched& sc, int iters) {
+        if (!router.pathfinder(ords[oi], sc.mode, iters, sc.pres0, sc.mult, sc.hist, sc.cap))
             return;
-        router.polish(4);
+        router.polish(huge ? 2 : 4);
         std::string tag = std::string(sc.name) + "-o" + std::to_string(oi);
         starts.push_back({router.total(), tag, router.snapshot()});
     };
-    for (size_t oi = 0; oi < ords.size(); ++oi) try_start(oi, scheds[0]);
-    for (size_t oi = 0; oi < ords.size(); ++oi) {
-        if (left() < seconds * 0.55) break;
-        for (size_t si = 1; si < sizeof(scheds) / sizeof(scheds[0]); ++si) {
+    const int n_ord = huge ? 2 : (int)ords.size();
+    const int iter_cap = huge ? 8 : big ? 24 : 1000;
+    if (huge) {
+        // Sparse giant cases legalize with one shortest-path pass. A full
+        // PathFinder round on a million-vertex grid does not finish in time.
+        std::cerr << "huge grid " << nv << " vertices, hard pass\n" << std::flush;
+        for (int oi = 0; oi < n_ord && starts.empty(); ++oi) {
+            router.clear();
+            if (!router.reroute_hard(ords[oi])) continue;
+            router.polish(2);
+            starts.push_back({router.total(), "hard-o" + std::to_string(oi), router.snapshot()});
+            std::cerr << "  hard-o" << oi << " " << router.total() << "\n" << std::flush;
+        }
+    }
+    if (!huge) {
+        for (int oi = 0; oi < n_ord; ++oi)
+            try_start(oi, scheds[0], std::min(scheds[0].iters, iter_cap));
+    }
+    if (!huge) {
+        for (int oi = 0; oi < n_ord; ++oi) {
             if (left() < seconds * 0.55) break;
-            try_start(oi, scheds[si]);
+            for (size_t si = 1; si < sizeof(scheds) / sizeof(scheds[0]); ++si) {
+                if (left() < seconds * 0.55) break;
+                try_start(oi, scheds[si], std::min(scheds[si].iters, iter_cap));
+            }
         }
     }
     if (starts.empty()) {
         for (size_t oi = 0; oi < ords.size() && starts.empty(); ++oi) {
-            if (!router.pathfinder(ords[oi], 2, 80, 0.5, 1.9, 0.6, 0.0)) continue;
+            if (!router.pathfinder(ords[oi], 2, huge ? 24 : 80, 0.5, 1.9, 0.6, 0.0)) continue;
             router.polish(6);
             starts.push_back(
                 {router.total(), "fallback-o" + std::to_string(oi), router.snapshot()});
@@ -1226,19 +1257,21 @@ static SolveResult solve_file(const std::string& path, const std::string& out_di
     for (int i = 1; i < (int)starts.size() && i < 3; ++i) {
         if (starts[i].delay <= starts[0].delay + window) n_deep = i + 1;
     }
+    if (huge) n_deep = 1;
 
     auto improve_until = [&](const std::string& tag, std::mt19937& local, Clock::time_point sub_end) {
         int stale = 0;
         while (Clock::now() < sub_end && stale < 2) {
             int before = router.total();
-            router.polish(3);
+            router.polish(huge ? 2 : 3);
             if (Clock::now() >= sub_end) break;
-            int g = router.group_search(1, 8);
+            int g = 0;
+            if (group_nets != 0) g = router.group_search(1, big ? 5 : 8, group_nets);
             if (Clock::now() >= sub_end) break;
-            int p = router.pair_pass(local, 400);
+            int p = pair_cap ? router.pair_pass(local, pair_cap) : 0;
             if (Clock::now() >= sub_end) break;
-            int steps = router.nnets() > 80 ? 16 : 30;
-            int ln = router.lns(steps, local, true);
+            int steps = huge ? 0 : big ? 6 : (router.nnets() > 80 ? 16 : 30);
+            int ln = steps ? router.lns(steps, local, true) : 0;
             if (g || p || ln) {
                 std::lock_guard<std::mutex> lock(g_print_mu);
                 std::cerr << "    " << tag << " +" << (g + p + ln) << " -> " << router.total()

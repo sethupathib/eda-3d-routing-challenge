@@ -1,0 +1,6 @@
+{
+  "author": "sethupathib",
+  "url": "https://github.com/sethupathib/eda-3d-routing-challenge",
+  "method": "C++ shortest-path trees in bbox order, then residual polish. Full PathFinder is skipped on this grid.",
+  "date": "2026-09-30"
+}
